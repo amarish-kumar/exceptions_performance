@@ -16,8 +16,8 @@ namespace ExceptionsPerformance {
 
         [Fact]
         public void Build_sample_data() {
-            double errorRate = .1; // 10% of the time our users mess up
-            int count = 50000; // 10000 entries by a user
+            double errorRate = 1; // 10% of the time our users mess up
+            int count = 10; // 10000 entries by a user
 
             var doc = BuildSampleData(errorRate, count);
             _output.WriteLine(doc.ToString());
