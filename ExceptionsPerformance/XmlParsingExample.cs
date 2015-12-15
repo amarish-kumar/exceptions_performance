@@ -1,48 +1,183 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using System.Xml.Serialization;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace ExceptionsPerformance {
+
     public class XmlParsingExample {
         private readonly ITestOutputHelper _output;
+
         public XmlParsingExample(ITestOutputHelper output) {
             _output = output;
         }
 
         [Fact]
         public void Build_sample_data() {
-            double errorRate = 1; // 10% of the time our users mess up
+            double errorRate = 0; // 100% of the time our users mess up
             int count = 10; // 10000 entries by a user
 
-            var doc = BuildSampleData(errorRate, count);
+            var doc = BuildSampleDataBadString(errorRate, count);
             _output.WriteLine(doc.ToString());
         }
 
-        static XDocument BuildSampleData(double errorRate, int count) {
+        [Fact]
+        public void Deserialize_xml_to_item_class_base_throw_error() {
+            var externalData = BuildSampleDataBadString(1, 10);
+
+            var deserializedRawData = DeserializeRawData(externalData);
+            var domainModelItems = deserializedRawData.Select(x => new List<ItemEntity>() {
+                new ItemEntity() {
+                    ItemId = x.GetPropertyValue("ItemCode"),
+                    ItemDescription = x.GetPropertyValue("ItemDescription"),
+                    ItemCode = x.GetPropertyValue("ItemCode"),
+                    ItemCost = int.Parse(x.GetPropertyValue("ItemCost"))
+                }
+            });
+
+            Assert.Throws<System.FormatException>(() => domainModelItems.ToList());
+        }
+
+        [Fact]
+        public void Deserialize_xml_to_item_class_no_linq_base_throw_error() {
+            var externalData = BuildSampleDataBadString(1, 10);
+
+            var deserializedRawData = DeserializeRawData(externalData);
+
+            var itemEntities = new List<ItemEntity>();
+            foreach (var item in deserializedRawData) {
+                var itemEntity = new ItemEntity();
+                itemEntity.ItemId = item.GetPropertyValue("ItemId");
+                itemEntity.ItemDescription = item.GetPropertyValue("ItemDescription");
+                itemEntity.ItemCode = item.GetPropertyValue("ItemCode");
+                itemEntity.ItemCost = int.Parse(item.GetPropertyValue("ItemCost"));
+                itemEntities.Add(itemEntity);
+            }
+        }
+
+        [Fact]
+        public void Deserialize_to_item_class_try_catch() {
+            
+
+        }
+
+        public List<Item> DeserializeRawData(XDocument rawData) {
+            var itemsXml = rawData.Element("SampleData");
+            var serializer = new XmlSerializer(typeof (Item));
+            var itemsElements = itemsXml.Elements();
+
+            var items = itemsElements
+                .Select(x => (Item) serializer.Deserialize(x.CreateReader()))
+                .ToList();
+            return items;
+        }
+
+        private static XDocument BuildSampleDataBadString(double errorRate, int count) {
             Random random = new Random(1);
             string bad_prefix = @"X";
 
             XDocument doc = new XDocument(
-            new XDeclaration("1.0", "utf-8", "yes"),
-            new XComment("Sample Data From Who Knows Where"),
-            new XElement("sampleData"));
+                new XDeclaration("1.0", "utf-8", "yes"),
+                new XComment("Sample Data from Somewhere"),
+                new XElement("SampleData"));
 
             for (int i = 0; i < count; i++) {
                 string input = random.Next().ToString();
-                if (random.NextDouble() < errorRate) {
+                double errorSwitch = random.NextDouble();
+                if (errorSwitch < errorRate) {
                     input = bad_prefix + input;
                 }
-                var el = new XElement("item",
-                    new XElement("property", new XAttribute("name", "Cost"), input)
-                );
-                doc.Element("sampleData").Add(el);
+                var el = new XElement("Item",
+                    new XElement("property",
+                        new XAttribute("name", "ItemId"),
+                        new XAttribute("value", i.ToString())),
+                    new XElement("property",
+                        new XAttribute("name", "ItemDescription"),
+                        new XAttribute("value", "ItemId: " + i + " Desc")),
+                    new XElement("property",
+                        new XAttribute("name", "ItemCode"),
+                        new XAttribute("value", "P123-456-" + i)),
+
+                    // Here's where the data gets corrupted
+                    new XElement("property",
+                        new XAttribute("name", "ItemCost"),
+                        new XAttribute("value", input))
+                    );
+                doc.Element("SampleData").Add(el);
             }
             return doc;
+        }
+    }
+
+    public static class XmlExtensionMethods {
+        public static string GetPropertyValue(this Item item, string name) {
+            return item.properties
+                .Where(x => x.name == name)
+                .Select(y => y.value)
+                .FirstOrDefault();
+        }
+    }
+
+    public class ItemEntity {
+        public string ItemId { get; set; }
+        public string ItemDescription { get; set; }
+        public string ItemCode { get; set; }
+        public int ItemCost { get; set; }
+    }
+
+    /// <remarks/>
+    [System.Xml.Serialization.XmlTypeAttribute(AnonymousType = true)]
+    [System.Xml.Serialization.XmlRootAttribute(Namespace = "", IsNullable = false)]
+    public partial class Item {
+
+        private ItemProperty[] propertyField;
+
+        /// <remarks/>
+        [System.Xml.Serialization.XmlElementAttribute("property")]
+        public ItemProperty[] properties {
+            get {
+                return this.propertyField;
+            }
+            set {
+                this.propertyField = value;
+            }
+        }
+    }
+
+    /// <remarks/>
+    [System.Xml.Serialization.XmlTypeAttribute(AnonymousType = true)]
+    public partial class ItemProperty {
+
+        private string nameField;
+
+        private string valueField;
+
+        /// <remarks/>
+        [System.Xml.Serialization.XmlAttributeAttribute()]
+        public string name {
+            get {
+                return this.nameField;
+            }
+            set {
+                this.nameField = value;
+            }
+        }
+
+        /// <remarks/>
+        [System.Xml.Serialization.XmlAttributeAttribute()]
+        public string value {
+            get {
+                return this.valueField;
+            }
+            set {
+                this.valueField = value;
+            }
         }
     }
 }
