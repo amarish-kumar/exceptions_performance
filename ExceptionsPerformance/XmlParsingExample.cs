@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -45,37 +46,77 @@ namespace ExceptionsPerformance {
         }
 
         [Fact]
-        public void Deserialize_xml_to_item_class_no_linq_base_throw_error() {
-            var externalData = BuildSampleDataBadString(1, 10);
+        public void Deserialize_xml_to_item_class_no_linq_try_catch() {
+            var tryCatchTime = TimeTryCatch(1, 5000);
+            _output.WriteLine(tryCatchTime.ToString());
+        }
 
-            var deserializedRawData = DeserializeRawData(externalData);
+        [Fact]
+        public void Deserialize_xml_to_item_class_no_linq_try_parse() {
+            var tryCatchTime = TimeTryParse(1, 5000);
+            _output.WriteLine(tryCatchTime.ToString());
+        }
 
+        [Fact]
+        public void Benchmarks() {
+            for (double i = 0; i < 1; i += .1) {
+                double errorRate = i; // % of the time our users mess up
+                int count = 50000; // # entries by a user
+
+                TimeSpan trycatch = TimeTryCatch(errorRate, count);
+                TimeSpan tryparse = TimeTryParse(errorRate, count);
+
+                _output.WriteLine("trycatch: {0}", trycatch);
+                _output.WriteLine("tryparse: {0}", tryparse);
+                _output.WriteLine("slowdown: {0}", trycatch.Subtract(tryparse));
+                _output.WriteLine(Environment.NewLine);
+            }
+        }
+
+        public TimeSpan TimeTryCatch(double errorRate, int count) {
+            Stopwatch stopwatch = new Stopwatch();
+            var externalData = BuildSampleDataBadString(errorRate, count);
+            List<Item> deserializedRawData = DeserializeRawData(externalData);
             var itemEntities = new List<ItemEntity>();
+
+            stopwatch.Start();
             foreach (var item in deserializedRawData) {
                 var itemEntity = new ItemEntity();
                 itemEntity.ItemId = item.GetPropertyValue("ItemId");
                 itemEntity.ItemDescription = item.GetPropertyValue("ItemDescription");
                 itemEntity.ItemCode = item.GetPropertyValue("ItemCode");
-                itemEntity.ItemCost = int.Parse(item.GetPropertyValue("ItemCost"));
+                try {
+                    itemEntity.ItemCost = int.Parse(item.GetPropertyValue("ItemCost"));
+                } catch (Exception) {
+                    itemEntity.ItemCost = 0;
+                }
                 itemEntities.Add(itemEntity);
             }
+            stopwatch.Stop();
+            return stopwatch.Elapsed;
         }
 
-        [Fact]
-        public void Deserialize_to_item_class_try_catch() {
-            
+        public TimeSpan TimeTryParse(double errorRate, int count) {
+            Stopwatch stopwatch = new Stopwatch();
+            var externalData = BuildSampleDataBadString(errorRate, count);
+            List<Item> deserializedRawData = DeserializeRawData(externalData);
+            var itemEntities = new List<ItemEntity>();
 
-        }
+            stopwatch.Start();
+            foreach (var item in deserializedRawData) {
+                var itemEntity = new ItemEntity();
+                itemEntity.ItemId = item.GetPropertyValue("ItemId");
+                itemEntity.ItemDescription = item.GetPropertyValue("ItemDescription");
+                itemEntity.ItemCode = item.GetPropertyValue("ItemCode");
 
-        public List<Item> DeserializeRawData(XDocument rawData) {
-            var itemsXml = rawData.Element("SampleData");
-            var serializer = new XmlSerializer(typeof (Item));
-            var itemsElements = itemsXml.Elements();
+                int itemCost; 
+                int.TryParse(item.GetPropertyValue("ItemCode"), out itemCost);
+                itemEntity.ItemCost = itemCost;
 
-            var items = itemsElements
-                .Select(x => (Item) serializer.Deserialize(x.CreateReader()))
-                .ToList();
-            return items;
+                itemEntities.Add(itemEntity);
+            }
+            stopwatch.Stop();
+            return stopwatch.Elapsed;
         }
 
         private static XDocument BuildSampleDataBadString(double errorRate, int count) {
@@ -112,6 +153,17 @@ namespace ExceptionsPerformance {
                 doc.Element("SampleData").Add(el);
             }
             return doc;
+        }
+
+        public List<Item> DeserializeRawData(XDocument rawData) {
+            var itemsXml = rawData.Element("SampleData");
+            var serializer = new XmlSerializer(typeof(Item));
+            var itemsElements = itemsXml.Elements();
+
+            var items = itemsElements
+                .Select(x => (Item)serializer.Deserialize(x.CreateReader()))
+                .ToList();
+            return items;
         }
     }
 
