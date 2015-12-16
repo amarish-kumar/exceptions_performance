@@ -21,11 +21,33 @@ namespace ExceptionsPerformance {
 
         [Fact]
         public void Build_sample_data() {
-            double errorRate = 0; // 100% of the time our users mess up
-            int count = 10; // 10000 entries by a user
+            double errorRate = .5; // 50% of the time our users mess up
+            int count = 50000; // 50000 entries by a user
 
             var doc = BuildSampleDataBadString(errorRate, count);
+
             _output.WriteLine(doc.ToString());
+            //<!--Sample Data from Somewhere-->
+            //<SampleData>
+            //  <Item>
+            //    <property name="ItemId" value="0" />
+            //    <property name="ItemDescription" value="ItemId: 0 Desc" />
+            //    <property name="ItemCode" value="P123-456-0" />
+            //    <property name="ItemCost" value="X534011718" /> // BAD...
+            //  </Item>
+            //  <Item>
+            //    <property name="ItemId" value="1" />
+            //    <property name="ItemDescription" value="ItemId: 1 Desc" />
+            //    <property name="ItemCode" value="P123-456-1" />
+            //    <property name="ItemCost" value="1002897798" />
+            //  </Item>
+            //  <Item>
+            //    <property name="ItemId" value="2" />
+            //    <property name="ItemDescription" value="ItemId: 2 Desc" />
+            //    <property name="ItemCode" value="P123-456-2" />
+            //    <property name="ItemCost" value="X1412011072" /> // BAD...
+            //  </Item>
+            //  ...
         }
 
         [Fact]
@@ -48,6 +70,10 @@ namespace ExceptionsPerformance {
         [Fact]
         public void Deserialize_xml_to_item_class_no_linq_try_catch() {
             var tryCatchTime = TimeTryCatch(1, 5000);
+
+            int test;
+            var testP = int.TryParse(null, out test);
+
             _output.WriteLine(tryCatchTime.ToString());
         }
 
@@ -59,6 +85,7 @@ namespace ExceptionsPerformance {
 
         [Fact]
         public void Benchmarks() {
+            _output.WriteLine("FailureRate  Try-Catch           TryParse         Difference");
             for (double i = 0; i < 1; i += .1) {
                 double errorRate = i; // % of the time our users mess up
                 int count = 50000; // # entries by a user
@@ -66,10 +93,38 @@ namespace ExceptionsPerformance {
                 TimeSpan trycatch = TimeTryCatch(errorRate, count);
                 TimeSpan tryparse = TimeTryParse(errorRate, count);
 
-                _output.WriteLine("trycatch: {0}", trycatch);
-                _output.WriteLine("tryparse: {0}", tryparse);
-                _output.WriteLine("slowdown: {0}", trycatch.Subtract(tryparse));
-                _output.WriteLine(Environment.NewLine);
+                //_output.WriteLine("trycatch: {0}", trycatch);
+                //_output.WriteLine("tryparse: {0}", tryparse);
+                //_output.WriteLine("slowdown: {0}", trycatch.Subtract(tryparse));
+                //_output.WriteLine(Environment.NewLine);
+
+
+                _output.WriteLine(String.Format("{0:P}      {1}    {2} {3}", i, trycatch, tryparse, trycatch.Subtract(tryparse)));
+            }
+        }
+
+        [Fact]
+        public void Benchmark_try_catch() {
+            _output.WriteLine("FailureRate  ExecutionTime");
+            for (double i = 0; i < 1; i += .1) {
+                double errorRate = i; // % of the time our users mess up
+                int count = 50000; // # entries by a user
+
+                TimeSpan trycatch = TimeTryCatch(errorRate, count);
+                _output.WriteLine("{0:P}    {1}", errorRate, trycatch);
+            }
+        }
+
+
+        [Fact]
+        public void Benchmark_tryparse() {
+            _output.WriteLine("FailureRate  ExecutionTime");
+            for (double i = 0; i < 1; i += .1) {
+                double errorRate = i; // % of the time our users mess up
+                int count = 50000; // # entries by a user
+
+                TimeSpan trycatch = TimeTryParse(errorRate, count);
+                _output.WriteLine("{0:P}    {1}", errorRate, trycatch);
             }
         }
 
@@ -129,10 +184,10 @@ namespace ExceptionsPerformance {
                 new XElement("SampleData"));
 
             for (int i = 0; i < count; i++) {
-                string input = random.Next().ToString();
+                string randomInput = random.Next().ToString();
                 double errorSwitch = random.NextDouble();
                 if (errorSwitch < errorRate) {
-                    input = bad_prefix + input;
+                    randomInput = bad_prefix + randomInput;
                 }
                 var el = new XElement("Item",
                     new XElement("property",
@@ -144,11 +199,10 @@ namespace ExceptionsPerformance {
                     new XElement("property",
                         new XAttribute("name", "ItemCode"),
                         new XAttribute("value", "P123-456-" + i)),
-
                     // Here's where the data gets corrupted
                     new XElement("property",
                         new XAttribute("name", "ItemCost"),
-                        new XAttribute("value", input))
+                        new XAttribute("value", randomInput))
                     );
                 doc.Element("SampleData").Add(el);
             }
